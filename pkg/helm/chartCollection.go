@@ -76,7 +76,11 @@ func (collection ChartCollection) SetupHelm(settings *cli.EnvSettings, setters .
 			// resolve Glob version
 			v, err := c.ResolveVersion(settings)
 			if err != nil {
-				slog.Info("version is not semver. skipping this version", slog.String("name", c.Name), slog.String("version", c.Version))
+				slog.Info("failed to resolve chart version",
+					slog.String("name", c.Name),
+					slog.String("version", c.Version),
+					slog.String("repo", c.Repo.URL),
+					slog.String("error", err.Error()))
 				continue
 			}
 			c.Version = v

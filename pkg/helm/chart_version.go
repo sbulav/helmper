@@ -48,6 +48,11 @@ func (c Chart) ResolveVersions(settings *cli.EnvSettings) ([]string, error) {
 		return nil, err
 	}
 
+	slog.Debug("resolving chart versions",
+		slog.String("chart", c.Name),
+		slog.String("repo", c.Repo.Name),
+		slog.String("version_range", c.Version))
+
 	if strings.HasPrefix(c.Repo.URL, "oci://") {
 		url, _ := strings.CutPrefix(c.Repo.URL, "oci://")
 		// Append chart name to URL if not already present
