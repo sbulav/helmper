@@ -302,7 +302,7 @@ func (c Chart) Pull(settings *cli.EnvSettings) (string, error) {
 	}
 
 	chartPath := strings.Replace(settings.RepositoryCache, "/repository", "/"+c.Name, 1)
-	tarPattern := fmt.Sprintf("%s-*%s*.tgz", chartPath, c.Version)
+	tarPattern := fmt.Sprintf("%s-%s.tgz", chartPath, c.Version)
 
 	if file.FileExists(chartPath) {
 		path := filepath.Join(chartPath, chartutil.ChartsDir, c.Name, chartutil.ChartfileName)
