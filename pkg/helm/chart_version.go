@@ -50,6 +50,10 @@ func (c Chart) ResolveVersions(settings *cli.EnvSettings) ([]string, error) {
 
 	if strings.HasPrefix(c.Repo.URL, "oci://") {
 		url, _ := strings.CutPrefix(c.Repo.URL, "oci://")
+		// Append chart name to URL if not already present
+		if !strings.HasSuffix(url, c.Name) {
+			url = url + "/" + c.Name
+		}
 		tags, err := c.RegistryClient.Tags(url)
 		if err != nil {
 			return nil, err
@@ -106,6 +110,10 @@ func (c Chart) ResolveVersion(settings *cli.EnvSettings) (string, error) {
 
 	if strings.HasPrefix(c.Repo.URL, "oci://") {
 		url, _ := strings.CutPrefix(c.Repo.URL, "oci://")
+		// Append chart name to URL if not already present
+		if !strings.HasSuffix(url, c.Name) {
+			url = url + "/" + c.Name
+		}
 		tags, err := c.RegistryClient.Tags(url)
 		if err != nil {
 			return "", err
@@ -136,7 +144,7 @@ func (c Chart) ResolveVersion(settings *cli.EnvSettings) (string, error) {
 		if len(vs2) == 0 {
 			return "", fmt.Errorf("failed to resolve version for %s range; available tags: %+v", c.Version, tags)
 		}
-		
+
 		prefixV := strings.Contains(c.Version, "v")
 		if prefixV {
 			return "v" + vs2[len(vs2)-1], nil
@@ -183,6 +191,10 @@ func (c Chart) LatestVersion(settings *cli.EnvSettings) (string, error) {
 
 	if strings.HasPrefix(c.Repo.URL, "oci://") {
 		url, _ := strings.CutPrefix(c.Repo.URL, "oci://")
+		// Append chart name to URL if not already present
+		if !strings.HasSuffix(url, c.Name) {
+			url = url + "/" + c.Name
+		}
 		vPrefix := strings.Contains(c.Version, "v")
 		tags, err := c.RegistryClient.Tags(url)
 		if err != nil {
