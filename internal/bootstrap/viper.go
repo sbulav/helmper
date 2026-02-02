@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -139,6 +140,11 @@ func LoadViperConfiguration() (*viper.Viper, error) {
 
 	err := viper.ReadInConfig() // Find and read the config file
 	if err != nil {             // Handle errors reading the config file
+		// If using default config paths (no -f flag specified) and config not found, show help
+		if viper.GetString("f") == "unused" {
+			printHelp()
+			os.Exit(0)
+		}
 		return nil, err
 	}
 
@@ -326,6 +332,35 @@ export:
 	viper.WatchConfig()
 
 	return viper, nil
+}
+
+// printHelp prints usage information and exits
+func printHelp() {
+	fmt.Print(`
+Helmper - Helm Chart Image Mirror and Patcher
+
+Usage:
+  helmper [flags]
+
+Flags:
+  -f string    Path to configuration file (default: search in standard locations)
+  --verbose    Enable verbose output (debug logging)
+
+Configuration:
+  Helmper requires a YAML configuration file. Search order:
+  1. /etc/helmper/helmper.yaml
+  2. $HOME/.config/helmper/helmper.yaml  
+  3. ./helmper.yaml (current directory)
+
+  Use -f flag to specify a custom path:
+    helmper -f /path/to/config.yaml
+
+Example configuration:
+  See example/helmper.yaml for a complete example.
+
+For more information, visit: https://github.com/ChristofferNissen/helmper
+
+`)
 }
 
 // Viper module for Fx
