@@ -2,11 +2,11 @@ package helm
 
 import (
 	"bytes"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
-	"golang.org/x/exp/slog"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/downloader"
 	"helm.sh/helm/v3/pkg/getter"

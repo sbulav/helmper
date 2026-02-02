@@ -118,6 +118,7 @@ func LoadViperConfiguration() (*viper.Viper, error) {
 	viper := viper.New()
 
 	pflag.String("f", "unused", "path to configuration file")
+	pflag.Bool("verbose", false, "enable verbose output (debug logging)")
 
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)

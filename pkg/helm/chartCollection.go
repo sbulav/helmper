@@ -1,12 +1,10 @@
 package helm
 
 import (
-	"log"
 	"log/slog"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/ChristofferNissen/helmper/pkg/util/terminal"
 	"github.com/jinzhu/copier"
 	"helm.sh/helm/v3/pkg/cli"
 )
@@ -52,9 +50,7 @@ func (collection ChartCollection) SetupHelm(settings *cli.EnvSettings, setters .
 	if err != nil {
 		return nil, err
 	}
-	if args.Verbose {
-		log.Printf("Added Helm repositories to config '%s' %s\n", settings.RepositoryConfig, terminal.GetCheckMarkEmoji())
-	}
+	slog.Debug("Added Helm repositories to config", slog.String("config_path", settings.RepositoryConfig))
 
 	// Update Helm Repos
 	output, err := updateRepositories(settings, args.Verbose, args.Update)
@@ -63,9 +59,9 @@ func (collection ChartCollection) SetupHelm(settings *cli.EnvSettings, setters .
 	}
 	// Log results
 	if args.Verbose {
-		log.Printf("Updated all Helm repositories %s\n%s", terminal.GetCheckMarkEmoji(), output)
+		slog.Debug("Updated all Helm repositories", slog.String("output", output))
 	} else {
-		log.Printf("Updated all Helm repositories %s\n", terminal.GetCheckMarkEmoji())
+		slog.Info("Updated all Helm repositories")
 	}
 
 	// Expand collection if semantic version range
@@ -76,11 +72,11 @@ func (collection ChartCollection) SetupHelm(settings *cli.EnvSettings, setters .
 			// resolve Glob version
 			v, err := c.ResolveVersion(settings)
 			if err != nil {
-				slog.Info("failed to resolve chart version",
+				slog.Error("failed to resolve chart version",
 					slog.String("name", c.Name),
 					slog.String("version", c.Version),
 					slog.String("repo", c.Repo.URL),
-					slog.String("error", err.Error()))
+					slog.Any("error", err))
 				continue
 			}
 			c.Version = v
@@ -104,9 +100,7 @@ func (collection ChartCollection) SetupHelm(settings *cli.EnvSettings, setters .
 	if err != nil {
 		return nil, err
 	}
-	if args.Verbose {
-		log.Println("Pulled Helm Charts")
-	}
+	slog.Info("Pulled Helm Charts")
 
 	return to.Ptr(collection), nil
 }

@@ -3,7 +3,6 @@ package helm
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"sort"
@@ -91,7 +90,7 @@ func (io *IdentifyImportOption) Run(_ context.Context) (RegistryChartStatus, Reg
 		for i := range imageMap {
 			if i.In(seenImages) {
 				ref := i.String()
-				log.Printf("Already parsed '%s', skipping...\n", ref)
+				slog.Debug("Image already parsed, skipping", slog.String("image", ref))
 				continue
 			}
 			// make sure we don't parse again
@@ -240,8 +239,6 @@ func (opt ChartImportOption) Run(ctx context.Context, setters ...Option) error {
 					c := c
 
 					eg.Go(func() error {
-						slog.With(slog.String("chart", c.Name))
-
 						if c.Name == "images" {
 							return nil
 						}

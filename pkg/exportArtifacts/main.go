@@ -38,11 +38,11 @@ func (eo *ExportOption) Run(ctx context.Context, folder string) ([]ImageArtifact
 			overview := fmt.Sprintf("Registry: %s, Image: %s, Tag: %s",
 				r.GetName(),
 				img.String(), img.Tag)
-				ia := ImageArtifact{
-					ImageOverview: overview,
-					ImageName:     img.String(),
-					ImageTag:     img.Tag,
-				}
+			ia := ImageArtifact{
+				ImageOverview: overview,
+				ImageName:     img.String(),
+				ImageTag:      img.Tag,
+			}
 			imageArtifacts = append(imageArtifacts, ia)
 		}
 	}
@@ -74,15 +74,15 @@ func (eo *ExportOption) Run(ctx context.Context, folder string) ([]ImageArtifact
 
 	jsonData, err := json.MarshalIndent(exportData, "", "  ")
 	if err != nil {
-        slog.Error("Failed to export data to JSON", slog.String("error", err.Error()))
-        return nil, nil, fmt.Errorf("failed to export data to JSON: %w", err)
-    }
-	
+		slog.Error("Failed to export data to JSON", slog.Any("error", err))
+		return nil, nil, fmt.Errorf("failed to export data to JSON: %w", err)
+	}
+
 	destPath := "artifacts.json"
 	if folder != "" {
 		err = eo.Fs.MkdirAll(folder, 0755)
 		if err != nil {
-			slog.Error("Failed to create directory", slog.String("folder", folder), slog.String("error", err.Error()))
+			slog.Error("Failed to create directory", slog.String("folder", folder), slog.Any("error", err))
 			return nil, nil, fmt.Errorf("failed to save file in the specified location %s: %w", folder, err)
 		}
 		destPath = fmt.Sprintf("%s/%s", folder, destPath)
@@ -90,12 +90,12 @@ func (eo *ExportOption) Run(ctx context.Context, folder string) ([]ImageArtifact
 		destPath = "./" + destPath
 		slog.Info("No folder specified, saving in the root directory")
 	}
-	
+
 	err = afero.WriteFile(eo.Fs, destPath, jsonData, 0644)
-    if err != nil {
-        slog.Error("Failed to write artifacts to", destPath, slog.String("error", err.Error()))
-        return nil, nil, fmt.Errorf("failed to write artifacts to %s: %w", destPath, err)
-    }
+	if err != nil {
+		slog.Error("Failed to write artifacts", slog.String("path", destPath), slog.Any("error", err))
+		return nil, nil, fmt.Errorf("failed to write artifacts to %s: %w", destPath, err)
+	}
 
 	slog.Info("Exported artifacts", slog.String("path", destPath))
 	return imageArtifacts, chartArtifacts, nil

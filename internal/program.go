@@ -103,9 +103,6 @@ func program(ctx context.Context, _ []string, viper *viper.Viper, settings *cli.
 		}
 	)
 
-	if verbose {
-		slog.SetLogLoggerLevel(slog.LevelDebug)
-	}
 	// Find input charts in configuration
 	slog.Debug("Found charts in config", slog.Int("count", len(charts.Charts)))
 

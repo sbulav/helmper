@@ -2,7 +2,7 @@ package terminal
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/enescakir/emoji"
 )
@@ -31,10 +31,7 @@ func PrintYellow(text string) {
 }
 
 func LogYellow(text string) {
-	colorReset := "\033[0m"
-	colorYellow := "\033[33m"
-
-	log.Printf("%s%s%s\n", string(colorYellow), text, string(colorReset))
+	slog.Warn(text)
 }
 
 // Emojis

@@ -231,8 +231,6 @@ func (o SpsOption) Run(ctx context.Context) error {
 				if b {
 					ref := i.String()
 
-					slog.Default().With(slog.String("image", ref))
-
 					r, err := o.ScanOption.Scan(ref)
 					if err != nil {
 						return err

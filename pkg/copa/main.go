@@ -3,7 +3,6 @@ package copa
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"os/exec"
 	"strings"
@@ -73,7 +72,7 @@ func (o PatchOption) Run(ctx context.Context, reportFilePaths map[*image.Image]s
 			ref := i.String()
 
 			if i.In(seenImages) {
-				log.Printf("Already patched '%s', skipping...\n", ref)
+				slog.Debug("Image already patched, skipping", slog.String("image", ref))
 				continue
 			}
 			// make sure we don't parse again

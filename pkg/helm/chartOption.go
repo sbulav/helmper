@@ -3,7 +3,6 @@ package helm
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -230,8 +229,6 @@ func (co *ChartOption) Run(ctx context.Context, setters ...Option) (ChartData, e
 			bar := bar.New("Parsing charts...\r", len(charts.Charts))
 
 			for _, c := range charts.Charts {
-				slog.Default().With(slog.String("chart", c.Name), slog.String("repo", c.Repo.URL), slog.String("version", c.Version))
-
 				// Check for latest version of chart
 				latest, err := c.LatestVersion(co.Settings)
 				if err != nil {
@@ -267,12 +264,10 @@ func (co *ChartOption) Run(ctx context.Context, setters ...Option) (ChartData, e
 
 					// subchart enabled in main chart?
 					enabled := ConditionMet(d.Condition, values)
-					if args.Verbose {
-						log.Printf("Chart '%s' SubChart '%s' enabled by condition '%s': %t\n", chartRef.Name(), d.Name, d.Condition, enabled)
-					}
 					slog.Debug(
 						"SubChart enabled by condition in parent chart",
-						slog.String("subChartName", d.Name),
+						slog.String("parent_chart", chartRef.Name()),
+						slog.String("sub_chart", d.Name),
 						slog.String("condition", d.Condition),
 						slog.Bool("enabled", enabled))
 

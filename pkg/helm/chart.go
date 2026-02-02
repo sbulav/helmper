@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/url"
 	"os"
@@ -24,6 +23,12 @@ import (
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/repo"
 )
+
+// helmLogFunc is a wrapper that provides a log.Printf compatible function for Helm SDK
+// that forwards to slog
+func helmLogFunc(format string, v ...interface{}) {
+	slog.Debug(fmt.Sprintf(format, v...))
+}
 
 func DependencyToChart(d *chart.Dependency, p *Chart) *Chart {
 	// Backwards compatibility with Charts pushed with helmper 0.1.x
@@ -111,7 +116,7 @@ func (c Chart) push(chartFilePath string, destination string) error {
 		return fmt.Errorf("error pushing chart: %w", err)
 	}
 
-	log.Printf("Chart pushed successfully: %s to %s\n", c.Name, destination)
+	slog.Info("Chart pushed successfully", slog.String("chart", c.Name), slog.String("destination", destination))
 	return nil
 }
 
@@ -286,7 +291,7 @@ func (c Chart) PushAndModify(settings *cli.EnvSettings, registry string, insecur
 func findFile(pattern string) (string, bool) {
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
-		fmt.Printf("Error matching pattern: %v\n", err)
+		slog.Error("Error matching pattern", slog.Any("error", err), slog.String("pattern", pattern))
 		return "", false
 	}
 	if len(matches) > 0 {
@@ -385,7 +390,7 @@ func (c Chart) Pull(settings *cli.EnvSettings) (string, error) {
 		}
 
 		actionConfig := new(action.Configuration)
-		if err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), "configmap", log.Printf); err != nil {
+		if err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), "configmap", helmLogFunc); err != nil {
 			return "", err
 		}
 

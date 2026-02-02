@@ -5,14 +5,16 @@ import (
 
 	"log/slog"
 
+	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
 // ProvideLogger sets up the slog configuration
-func ProvideLogger() *slog.Logger {
+func ProvideLogger(v *viper.Viper) *slog.Logger {
 	slogHandlerOpts := &slog.HandlerOptions{}
 
-	if os.Getenv("HELMPER_LOG_LEVEL") == "DEBUG" {
+	// Check environment variable first, then viper config for verbose flag
+	if os.Getenv("HELMPER_LOG_LEVEL") == "DEBUG" || v.GetBool("verbose") {
 		slogHandlerOpts.Level = slog.LevelDebug
 	}
 
