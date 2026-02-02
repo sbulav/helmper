@@ -22,6 +22,7 @@ import (
 	"github.com/ChristofferNissen/helmper/pkg/image"
 	"github.com/ChristofferNissen/helmper/pkg/registry"
 	"github.com/ChristofferNissen/helmper/pkg/trivy"
+	"github.com/ChristofferNissen/helmper/pkg/util/deduplog"
 	"github.com/ChristofferNissen/helmper/pkg/util/state"
 	"github.com/ChristofferNissen/helmper/pkg/util/terminal"
 )
@@ -54,11 +55,11 @@ func Program(args []string) error {
 			}
 		}),
 		bootstrap.HelmSettingsModule,
-		fx.Invoke(func(lc fx.Lifecycle, v *viper.Viper, settings *cli.EnvSettings) {
+		fx.Invoke(func(lc fx.Lifecycle, v *viper.Viper, settings *cli.EnvSettings, dedupWriter *deduplog.DeduplicatingWriter) {
 			lc.Append(fx.Hook{
 				OnStart: func(ctx context.Context) error {
 					go func() {
-						done <- program(ctx, args, v, settings) // Send the result to the channel
+						done <- program(ctx, args, v, settings, dedupWriter) // Send the result to the channel
 					}()
 					return nil
 				},
@@ -82,7 +83,7 @@ func Program(args []string) error {
 	return nil
 }
 
-func program(ctx context.Context, _ []string, viper *viper.Viper, settings *cli.EnvSettings) error {
+func program(ctx context.Context, _ []string, viper *viper.Viper, settings *cli.EnvSettings, dedupWriter *deduplog.DeduplicatingWriter) error {
 	slog.Info("Helmper", slog.String("version", version), slog.String("commit", commit), slog.String("date", date))
 
 	var (
@@ -284,5 +285,11 @@ func program(ctx context.Context, _ []string, viper *viper.Viper, settings *cli.
 			return err
 		}
 	}
+
+	// Log summary of suppressed duplicate messages
+	if dedupWriter != nil {
+		dedupWriter.LogSummary()
+	}
+
 	return nil
 }
