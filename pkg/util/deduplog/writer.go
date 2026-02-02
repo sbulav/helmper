@@ -37,14 +37,15 @@ func NewDeduplicatingWriter(w io.Writer, skipPattern string) (*DeduplicatingWrit
 
 // Write implements io.Writer. It deduplicates messages matching the skip pattern.
 func (d *DeduplicatingWriter) Write(p []byte) (n int, err error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	// Check if message matches the skip pattern
+	// Fast path: check pattern BEFORE taking the lock to reduce contention
 	if !d.skipPattern.Match(p) {
-		// Not a duplicate-able message, write it directly
+		// Not a duplicate-able message, write it directly without locking
 		return d.underlying.Write(p)
 	}
+
+	// Only lock if we need to check/update the seen map
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
 	// Normalize the message by extracting the key parts
 	normalized := d.normalize(p)
