@@ -100,6 +100,7 @@ func program(ctx context.Context, _ []string, viper *viper.Viper, settings *cli.
 			helm.K8SVersion(k8sVersion),
 			helm.Verbose(verbose),
 			helm.Update(update),
+			helm.LatestVersionOnly(parserConfig.LatestVersionOnly),
 		}
 	)
 

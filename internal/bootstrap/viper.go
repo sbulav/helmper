@@ -87,6 +87,7 @@ type ParserConfigSection struct {
 	UseCustomValues       bool `yaml:"useCustomValues"`
 	FailOnMissingValues   bool `yaml:"failOnMissingValues"`
 	FailOnMissingImages   bool `yaml:"failOnMissingImages"`
+	LatestVersionOnly     bool `yaml:"latestVersionOnly"`
 }
 
 type MirrorConfigSection struct {

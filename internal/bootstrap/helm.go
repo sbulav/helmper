@@ -23,9 +23,10 @@ type ChartSetupper interface {
 func SetupHelm(settings *cli.EnvSettings, charts ChartSetupper, setters ...helm.Option) (*helm.ChartCollection, error) {
 	// Default Options
 	args := &helm.Options{
-		Verbose:    false,
-		Update:     false,
-		K8SVersion: "1.31.1",
+		Verbose:           false,
+		Update:            false,
+		K8SVersion:        "1.31.1",
+		LatestVersionOnly: false,
 	}
 
 	for _, setter := range setters {
@@ -42,6 +43,7 @@ func SetupHelm(settings *cli.EnvSettings, charts ChartSetupper, setters ...helm.
 		settings,
 		helm.Update(args.Update),
 		helm.Verbose(args.Verbose),
+		helm.LatestVersionOnly(args.LatestVersionOnly),
 	)
 }
 

@@ -39,6 +39,7 @@ Helmper connects via gRPC to Trivy and Buildkit so you can run `helmper` without
 - automatically detecting all enabled container images in charts
 - providing an easy way to stay up to date on new chart releases
 - providing option to only import new images, or all images
+- **syncing only the latest version when using semver ranges** (reduces API calls and sync time)
 - enabling quick patching(and re-patching) of all images
 - enabling signing of images as an integrated part of the process
 - providing a mechanism to check requirements/dependencies before deploying charts with fx GitOps
@@ -138,6 +139,24 @@ import:
 ```
 
 <p align="center"><img src="docs/gifs/full.gif?raw=true"/></p>
+
+#### Semver Ranges with Latest Version Only
+
+For CI/CD pipelines that sync charts daily, use semver ranges with `latestVersionOnly` to sync only the latest matching version instead of all versions:
+
+```yaml
+parser:
+  latestVersionOnly: true  # Sync only latest version from range
+
+charts:
+- name: argo-cd
+  version: ">=5.0.0 <6.0.0"  # Syncs only latest 5.x, not all 5.x versions
+  repo:
+    name: argo
+    url: https://argoproj.github.io/argo-helm/
+```
+
+This reduces sync time, API calls, and storage when you only need the latest chart version.
 
 ## Documentation
 

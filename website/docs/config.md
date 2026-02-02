@@ -130,6 +130,7 @@ export:
 | `parser`                          | object       | nil    |  false | Adjust how Helmper parses charts |
 | `parser.disableImageDetection`    | bool         | false  |  false | Disable Image detection |
 | `parser.useCustomValues`          | bool         | false  |  false | Use user defined values for image parsing |
+| `parser.latestVersionOnly`        | bool         | false  |  false | When using semver ranges, sync only the latest matching version instead of all versions |
 | `import`      | object       | nil      | false |  If import is enabled, images will be pushed to the defined registries. If copacetic is enabled, images will be patched if possible. Finally, in the import section Cosign can be configured to sign the images after pushing to the registries. See table blow for full configuration options. |
 | `import.enabled`   | bool   | false   | false | Enable import of charts and artifacts to registries |
 | `import.replaceRegistryReferences`   | bool   | false   | false | Replace occurrences of old registry with import target registry |
@@ -217,6 +218,31 @@ The `charts` configuration option defines which charts to import.
 The `version` supports [Semantic Versioning 2.0.0](https://semver.org/) format versions as [Helm](https://helm.sh/docs/chart_best_practices/conventions/#version-numbers).
 
 [Semver cheatsheet](https://devhints.io/semver)
+
+### Latest Version Only
+
+When using semver ranges (e.g., `">=5.0.0 <6.0.0"`), Helmper by default will sync **all** chart versions that match the range. This can result in syncing many versions when you only need the latest one.
+
+Enable `parser.latestVersionOnly` to sync only the latest matching version:
+
+```yaml
+parser:
+  latestVersionOnly: true
+
+charts:
+  - name: argo-cd
+    version: ">=5.0.0 <6.0.0"  # Will sync only the latest 5.x version
+    repo:
+      name: argo
+      url: https://argoproj.github.io/argo-helm/
+```
+
+**Use case:** This is useful for CI/CD pipelines that run daily to sync external charts to a private registry. Instead of syncing all historical versions that match your semver range, you only sync the latest one, reducing:
+- Sync time
+- Registry API calls
+- Storage usage
+
+**Note:** This applies to both semver ranges (e.g., `">=1.0.0 <2.0.0"`) and glob patterns (e.g., `"1.2.*"`).
 
 ### Chart sources
 
