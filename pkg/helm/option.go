@@ -1,9 +1,10 @@
 package helm
 
 type Options struct {
-	Verbose    bool
-	Update     bool
-	K8SVersion string
+	Verbose           bool
+	Update            bool
+	K8SVersion        string
+	LatestVersionOnly bool
 }
 
 type Option func(*Options)
@@ -23,5 +24,11 @@ func Update(b bool) Option {
 func K8SVersion(v string) Option {
 	return func(args *Options) {
 		args.K8SVersion = v
+	}
+}
+
+func LatestVersionOnly(b bool) Option {
+	return func(args *Options) {
+		args.LatestVersionOnly = b
 	}
 }

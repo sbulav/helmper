@@ -176,3 +176,90 @@ func TestPush(t *testing.T) {
 	// Assert that the expectations were met
 	mockClient.AssertExpectations(t)
 }
+
+func TestLatestVersionOnlyOption(t *testing.T) {
+	tests := []struct {
+		name     string
+		enabled  bool
+		expected bool
+	}{
+		{
+			name:     "LatestVersionOnly enabled",
+			enabled:  true,
+			expected: true,
+		},
+		{
+			name:     "LatestVersionOnly disabled",
+			enabled:  false,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opt := LatestVersionOnly(tt.enabled)
+			args := &Options{}
+			opt(args)
+			assert.Equals(t, tt.expected, args.LatestVersionOnly)
+		})
+	}
+}
+
+func TestVersionFilteringWithLatestVersionOnly(t *testing.T) {
+	mockClient := new(MockRegistryClient)
+	settings := cli.New()
+
+	t.Run("ResolveVersions returns all matching versions", func(t *testing.T) {
+		c := Chart{
+			Repo: repo.Entry{
+				URL: "oci://localhost:5000/testchart",
+			},
+			Name:           "testchart",
+			Version:        ">= 1.0.0",
+			PlainHTTP:      true,
+			RegistryClient: mockClient,
+		}
+
+		mockClient.On("Tags", mock.Anything).Return([]string{"1.0.0", "1.1.0", "1.2.0"}, nil).Once()
+
+		versions, err := c.ResolveVersions(settings)
+		assert.NoError(t, err)
+		// Should return all 3 versions sorted
+		assert.Equals(t, 3, len(versions))
+		assert.Equals(t, "1.0.0", versions[0])
+		assert.Equals(t, "1.1.0", versions[1])
+		assert.Equals(t, "1.2.0", versions[2])
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("version filtering with LatestVersionOnly keeps only latest", func(t *testing.T) {
+		// Simulate the filtering logic from SetupHelm
+		allVersions := []string{"1.0.0", "1.1.0", "1.2.0"}
+		latestVersionOnly := true
+
+		filteredVersions := allVersions
+		if latestVersionOnly && len(allVersions) > 1 {
+			filteredVersions = allVersions[len(allVersions)-1:]
+		}
+
+		assert.Equals(t, 1, len(filteredVersions))
+		assert.Equals(t, "1.2.0", filteredVersions[0])
+	})
+
+	t.Run("version filtering without LatestVersionOnly keeps all versions", func(t *testing.T) {
+		// Simulate the filtering logic from SetupHelm
+		allVersions := []string{"1.0.0", "1.1.0", "1.2.0"}
+		latestVersionOnly := false
+
+		filteredVersions := allVersions
+		if latestVersionOnly && len(allVersions) > 1 {
+			filteredVersions = allVersions[len(allVersions)-1:]
+		}
+
+		assert.Equals(t, 3, len(filteredVersions))
+		assert.Equals(t, "1.0.0", filteredVersions[0])
+		assert.Equals(t, "1.1.0", filteredVersions[1])
+		assert.Equals(t, "1.2.0", filteredVersions[2])
+	})
+}

@@ -83,6 +83,12 @@ func (collection ChartCollection) SetupHelm(settings *cli.EnvSettings, setters .
 			res = append(res, c)
 		}
 
+		// If LatestVersionOnly is enabled and we have multiple versions,
+		// only keep the latest (last) one since versions are sorted
+		if args.LatestVersionOnly && len(vs) > 1 {
+			vs = vs[len(vs)-1:]
+		}
+
 		for _, v := range vs {
 			cv := &Chart{}
 			err := copier.Copy(&cv, &c)
