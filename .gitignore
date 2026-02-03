@@ -6,13 +6,20 @@
 **/.out
 **/.in
 
-**/cache/go/*/
+**/cache/go/*
 
 # Dependencies
 node_modules
 
 # Production
 /build
+
+# Ignore cmd/helmper binary output, but not source
+/cmd/helmper/helmper
+
+# Go cache
+.gocache
+.cache
 
 # Generated files
 .docusaurus
@@ -28,3 +35,14 @@ node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Go binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Go workspace
+go.work

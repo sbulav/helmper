@@ -18,14 +18,25 @@
         pkgs = import nixpkgs { inherit system; };
         lib = pkgs.lib;
 
+        # Get git commit and build date dynamically (similar to Makefile)
+        gitCommit = lib.substring 0 7 (self.rev or self.dirtyRev or "unknown");
+        buildDate = builtins.readFile (
+          pkgs.runCommand "build-date" { } ''
+            date -u +%Y-%m-%dT%H:%M:%SZ > $out
+          ''
+        );
+
         helmperPkg = pkgs.buildGoModule {
           pname = "helmper";
-          version = "0.1.0";
+          version = "dev";
           src = ./.;
+
+          # Build from cmd/helmper directory like Makefile
+          subPackages = [ "cmd/helmper" ];
 
           # Has external dependencies (Helm SDK, Cosign, etc.)
           # To update: set to null, run `nix build`, then copy the got hash
-          vendorHash = "sha256-/BwXWvumPR9j/hCqoGX5xIYdjQvZ7DyxgNqla9bXOBQ=";
+          vendorHash = "sha256-OqEVEfN3uodltMZoclYBVXmE70s1oALZKI4rslUKbX8=";
 
           # Skip tests that require network access (Nix sandbox blocks external calls)
           doCheck = false;
@@ -33,12 +44,14 @@
           env = {
             CGO_ENABLED = "0";
           };
+
+          # Match Makefile LD_FLAGS behavior
           ldflags = [
             "-s"
             "-w"
-            "-X github.com/ChristofferNissen/helmper/internal.version=0.1.0"
-            "-X github.com/ChristofferNissen/helmper/internal.commit=dev"
-            "-X github.com/ChristofferNissen/helmper/internal.date=unknown"
+            "-X github.com/ChristofferNissen/helmper/internal.version=dev"
+            "-X github.com/ChristofferNissen/helmper/internal.commit=${gitCommit}"
+            "-X github.com/ChristofferNissen/helmper/internal.date=${buildDate}"
           ];
         };
 
