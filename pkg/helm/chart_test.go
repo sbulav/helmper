@@ -1,7 +1,10 @@
 package helm
 
 import (
+	"context"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -79,6 +82,12 @@ func testSettings() (*cli.EnvSettings, error) {
 
 	return settings, nil
 }
+
+type timeoutError struct{}
+
+func (timeoutError) Error() string   { return "timeout" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return false }
 
 func TestPull(t *testing.T) {
 	cases := []struct {
@@ -201,6 +210,28 @@ func TestLatestVersionOnlyOption(t *testing.T) {
 			args := &Options{}
 			opt(args)
 			assert.Equals(t, tt.expected, args.LatestVersionOnly)
+		})
+	}
+}
+
+func TestIsRetryableChartDownloadError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "context deadline", err: context.DeadlineExceeded, want: true},
+		{name: "io eof", err: io.EOF, want: true},
+		{name: "unexpected eof message", err: fmt.Errorf("download failed: unexpected EOF"), want: true},
+		{name: "timeout net error", err: &net.OpError{Err: timeoutError{}}, want: true},
+		{name: "connection reset", err: fmt.Errorf("read: connection reset by peer"), want: true},
+		{name: "not found", err: fmt.Errorf("404 not found"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equals(t, tt.want, isRetryableChartDownloadError(tt.err))
 		})
 	}
 }

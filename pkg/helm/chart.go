@@ -1,10 +1,14 @@
 package helm
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,6 +32,11 @@ import (
 )
 
 const chartPullTimeout = 5 * time.Minute
+
+const (
+	chartDownloadRetries   = 3
+	chartDownloadRetryWait = 2 * time.Second
+)
 
 // helmLogFunc is a wrapper that provides a log.Printf compatible function for Helm SDK
 // that forwards to slog
@@ -426,12 +435,6 @@ func (c Chart) pullHTTPChart(settings *cli.EnvSettings, u *url.URL, chartPath st
 		getter.WithTimeout(chartPullTimeout),
 	}
 
-	dest, err := os.MkdirTemp("", "helmper-pull-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(dest)
-
 	downloader := downloader.ChartDownloader{
 		Out:     os.Stderr,
 		Verify:  downloader.VerifyNever,
@@ -442,17 +445,69 @@ func (c Chart) pullHTTPChart(settings *cli.EnvSettings, u *url.URL, chartPath st
 		RepositoryCache:  settings.RepositoryCache,
 	}
 
-	saved, _, err := downloader.DownloadTo(chartRef, c.Version, dest)
-	if err != nil {
-		return err
-	}
-
 	untarDir := filepath.Join(chartPath, chartutil.ChartsDir)
-	if err := os.MkdirAll(untarDir, 0o755); err != nil {
-		return err
+	var lastErr error
+	for attempt := 0; attempt < chartDownloadRetries; attempt++ {
+		dest, err := os.MkdirTemp("", "helmper-pull-")
+		if err != nil {
+			return err
+		}
+
+		saved, _, err := downloader.DownloadTo(chartRef, c.Version, dest)
+		if err == nil {
+			if err = os.RemoveAll(untarDir); err == nil {
+				err = os.MkdirAll(untarDir, 0o755)
+			}
+			if err == nil {
+				err = chartutil.ExpandFile(untarDir, saved)
+			}
+		}
+		_ = os.RemoveAll(dest)
+
+		if err == nil {
+			return nil
+		}
+
+		lastErr = err
+		if attempt == chartDownloadRetries-1 || !isRetryableChartDownloadError(err) {
+			return err
+		}
+
+		slog.Warn("Retrying Helm chart download",
+			slog.String("chart", c.Name),
+			slog.String("version", c.Version),
+			slog.String("source", chartRef),
+			slog.Int("attempt", attempt+2),
+			slog.Int("max_attempts", chartDownloadRetries),
+			slog.Duration("retry_in", chartDownloadRetryWait),
+			slog.Any("error", err),
+		)
+		time.Sleep(chartDownloadRetryWait)
 	}
 
-	return chartutil.ExpandFile(untarDir, saved)
+	return lastErr
+}
+
+func isRetryableChartDownloadError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "eof") ||
+		strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "timed out") ||
+		strings.Contains(msg, "connection reset by peer") ||
+		strings.Contains(msg, "tls handshake timeout")
 }
 
 func (c Chart) Locate(settings *cli.EnvSettings) (string, error) {
