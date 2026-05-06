@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -12,7 +13,7 @@ import (
 func (collection ChartCollection) pull(settings *cli.EnvSettings) error {
 	for _, chart := range collection.Charts {
 		if _, err := chart.Pull(settings); err != nil {
-			return err
+			return fmt.Errorf("pull chart %s@%s: %w", chart.Name, chart.Version, err)
 		}
 	}
 	return nil

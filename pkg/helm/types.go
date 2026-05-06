@@ -24,6 +24,7 @@ type Images struct {
 type Chart struct {
 	Name            string         `json:"name"`
 	Version         string         `json:"version"`
+	LocalPath       string         `json:"localPath,omitempty"`
 	ValuesFilePath  string         `json:"valuesFilePath"`
 	Values          map[string]any `json:"values,omitempty"`
 	Repo            repo.Entry     `json:"repo"`

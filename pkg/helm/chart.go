@@ -415,6 +415,17 @@ func (c Chart) Pull(settings *cli.EnvSettings) (string, error) {
 }
 
 func (c Chart) Locate(settings *cli.EnvSettings) (string, error) {
+	if c.LocalPath != "" {
+		if file.FileExists(c.LocalPath) && strings.HasSuffix(c.LocalPath, ".tgz") {
+			return c.LocalPath, nil
+		}
+
+		path := filepath.Join(c.LocalPath, chartutil.ChartfileName)
+		if file.FileExists(path) {
+			return c.LocalPath, nil
+		}
+	}
+
 	// Check if the repository URL is an OCI URL
 	if strings.HasPrefix(c.Repo.URL, "oci://") {
 		// Pull the chart from OCI
@@ -450,7 +461,11 @@ func (c Chart) GetValues(settings *cli.EnvSettings) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	return c.getValuesFromChartRef(chartRef, settings)
 
+}
+
+func (c Chart) getValuesFromChartRef(chartRef *chart.Chart, settings *cli.EnvSettings) (map[string]any, error) {
 	// Check if file exists, or use default values
 	var values chartutil.Values = chartRef.Values
 	if file.Exists(c.ValuesFilePath) {

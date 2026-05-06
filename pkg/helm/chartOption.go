@@ -21,6 +21,7 @@ import (
 	"github.com/ChristofferNissen/helmper/pkg/report"
 	"github.com/ChristofferNissen/helmper/pkg/util/bar"
 	"github.com/ChristofferNissen/helmper/pkg/util/counter"
+	"github.com/ChristofferNissen/helmper/pkg/util/file"
 	"github.com/ChristofferNissen/helmper/pkg/util/terminal"
 )
 
@@ -61,30 +62,35 @@ func determineTag(ctx context.Context, img *image.Image, plainHTTP bool) bool {
 	return false
 }
 
-func determineSubChartPath(settings *cli.EnvSettings, d *chart.Dependency, subChart *Chart, path string, args *Options) (string, error) {
+func determineSubChartPath(settings *cli.EnvSettings, d *chart.Dependency, subChart *Chart, path string, args *Options) (string, bool, error) {
 	p := path
 
 	// Check if path is archive e.g. contains '.tgz'
 	if strings.Contains(p, ".tgz") {
 		// Unpack tar
 		if err := chartutil.ExpandFile(settings.EnvVars()["HELM_CACHE_HOME"], p); err != nil {
-			return "", err
+			return "", false, err
 		}
 
 		p = filepath.Join(settings.EnvVars()["HELM_CACHE_HOME"], subChart.Parent.Name)
+	}
+
+	vendoredPath := filepath.Join(p, chartutil.ChartsDir, subChart.Name)
+	if file.FileExists(filepath.Join(vendoredPath, chartutil.ChartfileName)) {
+		return vendoredPath, true, nil
 	}
 
 	switch {
 	case strings.HasPrefix(d.Repository, "file://"): //  Helm version >2.2.0
 		fallthrough
 	case d.Repository == "": // Embedded
-		return fmt.Sprintf("%s/charts/%s", p, subChart.Name), nil
+		return fmt.Sprintf("%s/charts/%s", p, subChart.Name), true, nil
 	}
 
 	// Get Dependency Charts to local filesystem
 	subChartPath, err := subChart.Locate(settings)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	_ = updateRepository(
@@ -99,7 +105,7 @@ func determineSubChartPath(settings *cli.EnvSettings, d *chart.Dependency, subCh
 	// 	return "", err
 	// }
 
-	return subChartPath, nil
+	return subChartPath, false, nil
 }
 
 func replaceValue(elem []string, new string, m map[string]interface{}) error {
@@ -260,6 +266,11 @@ func (co *ChartOption) Run(ctx context.Context, setters ...Option) (ChartData, e
 				channel <- &chartInfo{chartRef, c}
 
 				// Look at SubCharts if they are enabled (chart dependency condition satisfied in values.yaml)
+				loadedDeps := map[string]*chart.Chart{}
+				for _, dep := range chartRef.Dependencies() {
+					loadedDeps[dep.Name()] = dep
+				}
+
 				for id, d := range chartRef.Metadata.Dependencies {
 
 					// subchart enabled in main chart?
@@ -286,14 +297,43 @@ func (co *ChartOption) Run(ctx context.Context, setters ...Option) (ChartData, e
 
 					// Create chart for dependency
 					subChart := DependencyToChart(d, c)
+					if depChart, ok := loadedDeps[d.Name]; ok {
+						savedPath, err := chartutil.Save(depChart, "/tmp/")
+						if err != nil {
+							return err
+						}
+						subChart.LocalPath = savedPath
+						subChart.Version = depChart.Metadata.Version
+						_ = bar.Add(1)
+						channel <- &chartInfo{depChart, subChart}
+						continue
+					}
+
+					// Determine path to subChart in filesystem
+					scPath, vendored, err := determineSubChartPath(co.Settings, d, subChart, path, args)
+					if err != nil {
+						return err
+					}
+
+					if vendored {
+						chartRef, err := loader.Load(scPath)
+						if err != nil {
+							return err
+						}
+						subChart.LocalPath = scPath
+						subChart.Version = chartRef.Metadata.Version
+						_ = bar.Add(1)
+						channel <- &chartInfo{chartRef, subChart}
+						continue
+					}
+
 					v, err := subChart.ResolveVersion(co.Settings)
 					if err != nil {
 						return err
 					}
 					subChart.Version = v
 
-					// Determine path to subChart in filesystem
-					scPath, err := determineSubChartPath(co.Settings, d, subChart, path, args)
+					scPath, _, err = determineSubChartPath(co.Settings, d, subChart, path, args)
 					if err != nil {
 						return err
 					}
@@ -336,7 +376,7 @@ func (co *ChartOption) Run(ctx context.Context, setters ...Option) (ChartData, e
 				c, chart := chart.Chart, chart.chartRef
 
 				// Get custom Helm values
-				values, err := c.GetValues(co.Settings)
+				values, err := c.getValuesFromChartRef(chart, co.Settings)
 				if err != nil {
 					return err
 				}
