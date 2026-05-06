@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -21,8 +22,12 @@ import (
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/downloader"
+	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/repo"
 )
+
+const chartPullTimeout = 5 * time.Minute
 
 // helmLogFunc is a wrapper that provides a log.Printf compatible function for Helm SDK
 // that forwards to slog
@@ -354,6 +359,7 @@ func (c Chart) Pull(settings *cli.EnvSettings) (string, error) {
 		if c.PlainHTTP {
 			opts = append(opts, registry.ClientOptPlainHTTP())
 		}
+		opts = append(opts, registry.ClientOptHTTPClient(&http.Client{Timeout: chartPullTimeout}))
 		rc, err := registry.NewClient(
 			opts...,
 		)
@@ -376,32 +382,7 @@ func (c Chart) Pull(settings *cli.EnvSettings) (string, error) {
 		return tarPath, nil
 
 	} else {
-
-		co := action.ChartPathOptions{
-			CaFile:                c.Repo.CAFile,
-			CertFile:              c.Repo.CertFile,
-			KeyFile:               c.Repo.KeyFile,
-			InsecureSkipTLSverify: c.Repo.InsecureSkipTLSverify,
-			PlainHTTP:             u.Scheme == "http",
-			RepoURL:               c.Repo.URL,
-			Username:              c.Repo.Username,
-			Password:              c.Repo.Password,
-			Version:               c.Version,
-		}
-
-		actionConfig := new(action.Configuration)
-		if err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), "configmap", helmLogFunc); err != nil {
-			return "", err
-		}
-
-		pull := action.NewPullWithOpts(action.WithConfig(actionConfig))
-		pull.ChartPathOptions = co
-		pull.Settings = settings
-		pull.Untar = true
-		pull.DestDir = chartPath
-		pull.UntarDir = chartutil.ChartsDir
-
-		if _, err := pull.Run(c.Name); err != nil {
+		if err := c.pullHTTPChart(settings, u, chartPath); err != nil {
 			return "", err
 		}
 
@@ -412,6 +393,66 @@ func (c Chart) Pull(settings *cli.EnvSettings) (string, error) {
 
 		return chartPath + "/" + chartutil.ChartsDir + "/" + c.Name, nil
 	}
+}
+
+func (c Chart) pullHTTPChart(settings *cli.EnvSettings, u *url.URL, chartPath string) error {
+	chartRef := c.Name
+	if c.Repo.URL != "" {
+		resolvedRef, err := repo.FindChartInAuthAndTLSAndPassRepoURL(
+			c.Repo.URL,
+			c.Repo.Username,
+			c.Repo.Password,
+			c.Name,
+			c.Version,
+			c.Repo.CertFile,
+			c.Repo.KeyFile,
+			c.Repo.CAFile,
+			c.Repo.InsecureSkipTLSverify,
+			c.Repo.PassCredentialsAll,
+			getter.All(settings),
+		)
+		if err != nil {
+			return err
+		}
+		chartRef = resolvedRef
+	}
+
+	opts := []getter.Option{
+		getter.WithBasicAuth(c.Repo.Username, c.Repo.Password),
+		getter.WithPassCredentialsAll(c.Repo.PassCredentialsAll),
+		getter.WithTLSClientConfig(c.Repo.CertFile, c.Repo.KeyFile, c.Repo.CAFile),
+		getter.WithInsecureSkipVerifyTLS(c.Repo.InsecureSkipTLSverify),
+		getter.WithPlainHTTP(u.Scheme == "http"),
+		getter.WithTimeout(chartPullTimeout),
+	}
+
+	dest, err := os.MkdirTemp("", "helmper-pull-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dest)
+
+	downloader := downloader.ChartDownloader{
+		Out:     os.Stderr,
+		Verify:  downloader.VerifyNever,
+		Getters: getter.All(settings),
+		Options: opts,
+
+		RepositoryConfig: settings.RepositoryConfig,
+		RepositoryCache:  settings.RepositoryCache,
+	}
+
+	saved, _, err := downloader.DownloadTo(chartRef, c.Version, dest)
+	if err != nil {
+		return err
+	}
+
+	untarDir := filepath.Join(chartPath, chartutil.ChartsDir)
+	if err := os.MkdirAll(untarDir, 0o755); err != nil {
+		return err
+	}
+
+	return chartutil.ExpandFile(untarDir, saved)
 }
 
 func (c Chart) Locate(settings *cli.EnvSettings) (string, error) {

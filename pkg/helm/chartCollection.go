@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/jinzhu/copier"
@@ -12,9 +13,18 @@ import (
 
 func (collection ChartCollection) pull(settings *cli.EnvSettings) error {
 	for _, chart := range collection.Charts {
+		started := time.Now()
+		slog.Info("Pulling Helm chart",
+			slog.String("chart", chart.Name),
+			slog.String("version", chart.Version),
+			slog.String("repo", chart.Repo.URL))
 		if _, err := chart.Pull(settings); err != nil {
 			return fmt.Errorf("pull chart %s@%s: %w", chart.Name, chart.Version, err)
 		}
+		slog.Info("Pulled Helm chart",
+			slog.String("chart", chart.Name),
+			slog.String("version", chart.Version),
+			slog.Duration("duration", time.Since(started)))
 	}
 	return nil
 }
