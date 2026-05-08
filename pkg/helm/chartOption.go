@@ -243,8 +243,16 @@ func (co *ChartOption) Run(ctx context.Context, setters ...Option) (ChartData, e
 				}
 
 				// Read info from filesystem
-				path, chartRef, values, err := c.Read(co.Settings, args.Update)
+				path, chartRef, values, err := c.Read(co.Settings, false)
 				if err != nil {
+					if args.ContinueOnChartErrors {
+						slog.Warn("skipping chart after parse failure",
+							slog.String("chart", c.Name),
+							slog.String("version", c.Version),
+							slog.String("repo", c.Repo.URL),
+							slog.Any("error", err))
+						continue
+					}
 					return err
 				}
 				valuesType := report.DeterminePathType(c.ValuesFilePath)
@@ -300,6 +308,14 @@ func (co *ChartOption) Run(ctx context.Context, setters ...Option) (ChartData, e
 					if depChart, ok := loadedDeps[d.Name]; ok {
 						savedPath, err := chartutil.Save(depChart, "/tmp/")
 						if err != nil {
+							if args.ContinueOnChartErrors {
+								slog.Warn("skipping vendored subchart after save failure",
+									slog.String("parent_chart", c.Name),
+									slog.String("sub_chart", d.Name),
+									slog.Any("error", err))
+								_ = bar.Add(1)
+								continue
+							}
 							return err
 						}
 						subChart.LocalPath = savedPath
@@ -312,12 +328,28 @@ func (co *ChartOption) Run(ctx context.Context, setters ...Option) (ChartData, e
 					// Determine path to subChart in filesystem
 					scPath, vendored, err := determineSubChartPath(co.Settings, d, subChart, path, args)
 					if err != nil {
+						if args.ContinueOnChartErrors {
+							slog.Warn("skipping subchart after locate failure",
+								slog.String("parent_chart", c.Name),
+								slog.String("sub_chart", d.Name),
+								slog.Any("error", err))
+							_ = bar.Add(1)
+							continue
+						}
 						return err
 					}
 
 					if vendored {
 						chartRef, err := loader.Load(scPath)
 						if err != nil {
+							if args.ContinueOnChartErrors {
+								slog.Warn("skipping vendored subchart after load failure",
+									slog.String("parent_chart", c.Name),
+									slog.String("sub_chart", d.Name),
+									slog.Any("error", err))
+								_ = bar.Add(1)
+								continue
+							}
 							return err
 						}
 						subChart.LocalPath = scPath
@@ -329,16 +361,40 @@ func (co *ChartOption) Run(ctx context.Context, setters ...Option) (ChartData, e
 
 					v, err := subChart.ResolveVersion(co.Settings)
 					if err != nil {
+						if args.ContinueOnChartErrors {
+							slog.Warn("skipping subchart after version resolution failure",
+								slog.String("parent_chart", c.Name),
+								slog.String("sub_chart", d.Name),
+								slog.Any("error", err))
+							_ = bar.Add(1)
+							continue
+						}
 						return err
 					}
 					subChart.Version = v
 
 					scPath, _, err = determineSubChartPath(co.Settings, d, subChart, path, args)
 					if err != nil {
+						if args.ContinueOnChartErrors {
+							slog.Warn("skipping subchart after pull failure",
+								slog.String("parent_chart", c.Name),
+								slog.String("sub_chart", d.Name),
+								slog.Any("error", err))
+							_ = bar.Add(1)
+							continue
+						}
 						return err
 					}
 					chartRef, err := loader.Load(scPath)
 					if err != nil {
+						if args.ContinueOnChartErrors {
+							slog.Warn("skipping subchart after load failure",
+								slog.String("parent_chart", c.Name),
+								slog.String("sub_chart", d.Name),
+								slog.Any("error", err))
+							_ = bar.Add(1)
+							continue
+						}
 						return err
 					}
 
@@ -353,13 +409,11 @@ func (co *ChartOption) Run(ctx context.Context, setters ...Option) (ChartData, e
 		return channel
 	}
 
-	chartCollector := func(charts <-chan *chartInfo) ChartData {
+	topLevelChartCollector := func(charts *ChartCollection) ChartData {
 		chartImageHelmValuesMap := make(ChartData)
-
-		for c := range charts {
-			chartImageHelmValuesMap[c.Chart] = nil
+		for _, c := range charts.Charts {
+			chartImageHelmValuesMap[c] = nil
 		}
-
 		return chartImageHelmValuesMap
 	}
 
@@ -503,7 +557,7 @@ func (co *ChartOption) Run(ctx context.Context, setters ...Option) (ChartData, e
 				),
 			)
 		}
-		return chartCollector(chartGenerator(c)), nil
+		return topLevelChartCollector(c), nil
 	}
 
 	cd, err := workload(co.ChartCollection)

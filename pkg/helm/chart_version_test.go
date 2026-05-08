@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -55,7 +56,7 @@ func TestVersionsInRange(t *testing.T) {
 	}
 	versions, err := VersionsInRange(r, c)
 	assert.NoError(t, err)
-	assert.Equal(t, []string{"1.1.0", "1.0.0"}, versions)
+	assert.Equal(t, []string{"1.0.0", "1.1.0"}, versions)
 
 	mockLoader.AssertExpectations(t)
 }
@@ -124,6 +125,47 @@ func TestResolveVersionWithVPrefixedRange(t *testing.T) {
 	version, err := c.ResolveVersion(settings)
 	assert.NoError(t, err)
 	assert.Equal(t, "v1.1.0", version)
+}
+
+func TestLatestVersionSkipsPrereleases(t *testing.T) {
+	mockClient := new(MockRegistryClient)
+
+	c := Chart{
+		Repo: repo.Entry{
+			URL: "oci://localhost:5000/testchart",
+		},
+		Name:           "testchart",
+		Version:        ">= 1.0.0",
+		PlainHTTP:      true,
+		RegistryClient: mockClient,
+	}
+
+	settings := cli.New()
+
+	mockClient.On("Tags", mock.Anything).Return([]string{"1.0.0", "1.1.0", "1.2.0-rc.1"}, nil)
+
+	version, err := c.LatestVersion(settings)
+	assert.NoError(t, err)
+	assert.Equal(t, "1.1.0", version)
+}
+
+func TestChartOptionWithoutImageDetectionSkipsParsing(t *testing.T) {
+	chart := &Chart{
+		Repo: repo.Entry{
+			URL: "invalid://unused",
+		},
+		Name:    "testchart",
+		Version: "1.0.0",
+	}
+	option := ChartOption{
+		ChartCollection: &ChartCollection{Charts: []*Chart{chart}},
+		IdentifyImages:  false,
+	}
+
+	data, err := option.Run(context.Background())
+	assert.NoError(t, err)
+	assert.Contains(t, data, chart)
+	assert.Len(t, data[chart], 0)
 }
 
 func TestSetupHelmFailsWhenChartResolutionFails(t *testing.T) {

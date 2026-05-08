@@ -19,9 +19,11 @@ func VersionsInRange(r semver.Range, c Chart) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	index.SortEntries()
-	versions := index.Entries[c.Name]
-	versionsInRange := []string{}
+	return versionsInRangeFromIndex(r, index.Entries[c.Name], prefixV), nil
+}
+
+func versionsInRangeFromIndex(r semver.Range, versions repo.ChartVersions, prefixV bool) []string {
+	vs := []semver.Version{}
 	for _, v := range versions {
 		sv, err := semver.ParseTolerant(v.Version)
 		if err != nil {
@@ -31,14 +33,40 @@ func VersionsInRange(r semver.Range, c Chart) ([]string, error) {
 			continue
 		}
 		if r(sv) {
-			s := sv.String()
-			if prefixV {
-				s = "v" + s
-			}
-			versionsInRange = append(versionsInRange, s)
+			vs = append(vs, sv)
 		}
 	}
-	return versionsInRange, nil
+
+	semver.Sort(vs)
+
+	versionsInRange := []string{}
+	for _, v := range vs {
+		s := v.String()
+		if prefixV {
+			s = "v" + s
+		}
+		versionsInRange = append(versionsInRange, s)
+	}
+	return versionsInRange
+}
+
+func latestStableVersion(versions []semver.Version, prefixV bool) (string, error) {
+	stableVersions := []semver.Version{}
+	for _, v := range versions {
+		if len(v.Pre) == 0 {
+			stableVersions = append(stableVersions, v)
+		}
+	}
+	if len(stableVersions) == 0 {
+		return "", xerrors.New("Not Found")
+	}
+
+	semver.Sort(stableVersions)
+	latest := stableVersions[len(stableVersions)-1].String()
+	if prefixV {
+		return "v" + latest, nil
+	}
+	return latest, nil
 }
 
 func normalizeVersionRange(version string) string {
@@ -107,7 +135,12 @@ func (c Chart) ResolveVersions(settings *cli.EnvSettings) ([]string, error) {
 			return nil, err
 		}
 	}
-	return VersionsInRange(r, c)
+	indexPath := fmt.Sprintf("%s/%s-index.yaml", settings.RepositoryCache, c.Repo.Name)
+	index, err := c.IndexFileLoader.LoadIndexFile(indexPath)
+	if err != nil {
+		return nil, err
+	}
+	return versionsInRangeFromIndex(r, index.Entries[c.Name], strings.Contains(c.Version, "v")), nil
 }
 
 func (c Chart) ResolveVersion(settings *cli.EnvSettings) (string, error) {
@@ -178,22 +211,25 @@ func (c Chart) ResolveVersion(settings *cli.EnvSettings) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	index.SortEntries()
-	versions := index.Entries[c.Name]
+	versions := versionsInRangeFromIndex(r, index.Entries[c.Name], strings.Contains(c.Version, "v"))
+	if len(versions) > 0 {
+		v := versions[len(versions)-1]
+		slog.Debug("Resolved chart version", slog.String("chart", c.Name), slog.String("version", v))
+		return v, nil
+	}
+	return "", xerrors.New("Not Found")
+}
+
+func chartVersionsToSemver(versions repo.ChartVersions) []semver.Version {
+	vs := []semver.Version{}
 	for _, v := range versions {
 		sv, err := semver.ParseTolerant(v.Version)
 		if err != nil {
 			continue
 		}
-		if len(sv.Pre) > 0 {
-			continue
-		}
-		if r(sv) {
-			slog.Debug("Resolved chart version", slog.String("chart", c.Name), slog.String("version", sv.String()))
-			return sv.String(), nil
-		}
+		vs = append(vs, sv)
 	}
-	return "", xerrors.New("Not Found")
+	return vs
 }
 
 func (c Chart) LatestVersion(settings *cli.EnvSettings) (string, error) {
@@ -220,12 +256,7 @@ func (c Chart) LatestVersion(settings *cli.EnvSettings) (string, error) {
 			vs = append(vs, s)
 		}
 
-		semver.Sort(vs)
-
-		if vPrefix {
-			return "v" + vs[len(vs)-1].String(), nil
-		}
-		return vs[len(vs)-1].String(), nil
+		return latestStableVersion(vs, vPrefix)
 	}
 
 	indexPath := fmt.Sprintf("%s/%s-index.yaml", settings.RepositoryCache, c.Repo.Name)
@@ -233,21 +264,7 @@ func (c Chart) LatestVersion(settings *cli.EnvSettings) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	index.SortEntries()
-	res := "Not Found"
-	versions := index.Entries[c.Name]
-	for _, v := range versions {
-		sv, err := semver.Parse(v.Version)
-		if err != nil {
-			res = v.Version
-			break
-		}
-		if len(sv.Pre) == 0 {
-			res = sv.String()
-			break
-		}
-	}
-	return res, nil
+	return latestStableVersion(chartVersionsToSemver(index.Entries[c.Name]), strings.Contains(c.Version, "v"))
 }
 
 type FunctionLoader struct {
