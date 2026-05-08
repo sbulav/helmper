@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -11,7 +12,9 @@ import (
 	"helm.sh/helm/v3/pkg/cli"
 )
 
-func (collection ChartCollection) pull(settings *cli.EnvSettings) error {
+func (collection ChartCollection) pull(settings *cli.EnvSettings, continueOnError bool) (*ChartCollection, error) {
+	res := []*Chart{}
+	pullErrs := []error{}
 	for _, chart := range collection.Charts {
 		started := time.Now()
 		slog.Info("Pulling Helm chart",
@@ -19,14 +22,30 @@ func (collection ChartCollection) pull(settings *cli.EnvSettings) error {
 			slog.String("version", chart.Version),
 			slog.String("repo", chart.Repo.URL))
 		if _, err := chart.Pull(settings); err != nil {
-			return fmt.Errorf("pull chart %s@%s: %w", chart.Name, chart.Version, err)
+			pullErr := fmt.Errorf("pull chart %s@%s: %w", chart.Name, chart.Version, err)
+			if !continueOnError {
+				return nil, pullErr
+			}
+
+			pullErrs = append(pullErrs, pullErr)
+			slog.Warn("skipping chart after pull failure",
+				slog.String("chart", chart.Name),
+				slog.String("version", chart.Version),
+				slog.String("repo", chart.Repo.URL),
+				slog.Any("error", err))
+			continue
 		}
+		res = append(res, chart)
 		slog.Info("Pulled Helm chart",
 			slog.String("chart", chart.Name),
 			slog.String("version", chart.Version),
 			slog.Duration("duration", time.Since(started)))
 	}
-	return nil
+	if len(pullErrs) > 0 {
+		slog.Warn("some Helm charts failed to pull and were skipped", slog.Int("count", len(pullErrs)), slog.Any("error", errors.Join(pullErrs...)))
+	}
+	collection.Charts = res
+	return &collection, nil
 }
 
 func (collection ChartCollection) addToHelmRepositoryConfig(settings *cli.EnvSettings) error {
@@ -48,8 +67,9 @@ func (collection ChartCollection) SetupHelm(settings *cli.EnvSettings, setters .
 
 	// Default Options
 	args := &Options{
-		Verbose: false,
-		Update:  false,
+		Verbose:               false,
+		Update:                false,
+		ContinueOnChartErrors: false,
 	}
 
 	for _, setter := range setters {
@@ -77,21 +97,37 @@ func (collection ChartCollection) SetupHelm(settings *cli.EnvSettings, setters .
 
 	// Expand collection if semantic version range
 	res := []*Chart{}
+	resolveErrs := []error{}
 	for _, c := range collection.Charts {
-		vs, err := c.ResolveVersions(settings)
-		if err != nil {
+		vs, rangeErr := c.ResolveVersions(settings)
+		if rangeErr != nil {
 			// resolve Glob version
 			v, err := c.ResolveVersion(settings)
 			if err != nil {
+				resolveErr := fmt.Errorf("resolve chart %s@%s from %s: range resolution failed: %w; fallback resolution failed: %w", c.Name, c.Version, c.Repo.URL, rangeErr, err)
+				resolveErrs = append(resolveErrs, resolveErr)
 				slog.Error("failed to resolve chart version",
 					slog.String("name", c.Name),
 					slog.String("version", c.Version),
 					slog.String("repo", c.Repo.URL),
+					slog.Any("range_error", rangeErr),
 					slog.Any("error", err))
 				continue
 			}
 			c.Version = v
 			res = append(res, c)
+			continue
+		}
+
+		if len(vs) == 0 {
+			resolveErr := fmt.Errorf("resolve chart %s@%s from %s: no matching versions found", c.Name, c.Version, c.Repo.URL)
+			resolveErrs = append(resolveErrs, resolveErr)
+			slog.Error("failed to resolve chart version",
+				slog.String("name", c.Name),
+				slog.String("version", c.Version),
+				slog.String("repo", c.Repo.URL),
+				slog.Any("error", resolveErr))
+			continue
 		}
 
 		// If LatestVersionOnly is enabled and we have multiple versions,
@@ -110,13 +146,20 @@ func (collection ChartCollection) SetupHelm(settings *cli.EnvSettings, setters .
 			res = append(res, cv)
 		}
 	}
+	if len(resolveErrs) > 0 && !args.ContinueOnChartErrors {
+		return nil, errors.Join(resolveErrs...)
+	}
+	if len(resolveErrs) > 0 {
+		slog.Warn("some Helm charts failed to resolve and were skipped", slog.Int("count", len(resolveErrs)), slog.Any("error", errors.Join(resolveErrs...)))
+	}
 	collection.Charts = res
 
 	// Pull Helm Charts
-	err = collection.pull(settings)
+	pulledCollection, err := collection.pull(settings, args.ContinueOnChartErrors)
 	if err != nil {
 		return nil, err
 	}
+	collection = *pulledCollection
 	slog.Info("Pulled Helm Charts")
 
 	return to.Ptr(collection), nil

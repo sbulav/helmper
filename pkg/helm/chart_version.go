@@ -41,8 +41,12 @@ func VersionsInRange(r semver.Range, c Chart) ([]string, error) {
 	return versionsInRange, nil
 }
 
+func normalizeVersionRange(version string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(version, "*", "x"), "v", "")
+}
+
 func (c Chart) ResolveVersions(settings *cli.EnvSettings) ([]string, error) {
-	version := strings.ReplaceAll(c.Version, "v", "")
+	version := normalizeVersionRange(c.Version)
 	r, err := semver.ParseRange(version)
 	if err != nil {
 		return nil, err
@@ -107,7 +111,7 @@ func (c Chart) ResolveVersions(settings *cli.EnvSettings) ([]string, error) {
 }
 
 func (c Chart) ResolveVersion(settings *cli.EnvSettings) (string, error) {
-	v := strings.ReplaceAll(c.Version, "*", "x")
+	v := normalizeVersionRange(c.Version)
 	r, err := semver.ParseRange(v)
 	if err != nil {
 		return "", err

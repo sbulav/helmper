@@ -1,6 +1,9 @@
 package helm
 
 import (
+	"errors"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/blang/semver/v4"
@@ -99,6 +102,89 @@ func TestResolveVersion(t *testing.T) {
 	version, err := c.ResolveVersion(settings)
 	assert.NoError(t, err)
 	assert.Equal(t, "1.1.0", version)
+}
+
+func TestResolveVersionWithVPrefixedRange(t *testing.T) {
+	mockClient := new(MockRegistryClient)
+
+	settings := cli.New()
+
+	c := Chart{
+		Repo: repo.Entry{
+			URL: "oci://localhost:5000/testchart",
+		},
+		Name:           "testchart",
+		Version:        ">=v1.0.0",
+		PlainHTTP:      true,
+		RegistryClient: mockClient,
+	}
+
+	mockClient.On("Tags", mock.Anything).Return([]string{"1.0.0", "1.1.0"}, nil)
+
+	version, err := c.ResolveVersion(settings)
+	assert.NoError(t, err)
+	assert.Equal(t, "v1.1.0", version)
+}
+
+func TestSetupHelmFailsWhenChartResolutionFails(t *testing.T) {
+	mockClient := new(MockRegistryClient)
+	resolveErr := errors.New("registry unavailable")
+
+	settings := cli.New()
+	settings.RepositoryCache = t.TempDir()
+	settings.RepositoryConfig = filepath.Join(settings.RepositoryCache, "repositories.yaml")
+	assert.NoError(t, repo.NewFile().WriteFile(settings.RepositoryConfig, 0o644))
+
+	collection := ChartCollection{Charts: []*Chart{
+		{
+			Repo: repo.Entry{
+				URL: "oci://localhost:5000/testchart",
+			},
+			Name:           "testchart",
+			Version:        ">=1.0.0",
+			PlainHTTP:      true,
+			RegistryClient: mockClient,
+		},
+	}}
+
+	mockClient.On("Tags", mock.Anything).Return([]string{}, resolveErr).Twice()
+
+	_, err := collection.SetupHelm(settings)
+	assert.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "range resolution failed"), err.Error())
+	assert.True(t, strings.Contains(err.Error(), "fallback resolution failed"), err.Error())
+
+	mockClient.AssertExpectations(t)
+}
+
+func TestSetupHelmContinuesWhenChartResolutionFails(t *testing.T) {
+	mockClient := new(MockRegistryClient)
+	resolveErr := errors.New("registry unavailable")
+
+	settings := cli.New()
+	settings.RepositoryCache = t.TempDir()
+	settings.RepositoryConfig = filepath.Join(settings.RepositoryCache, "repositories.yaml")
+	assert.NoError(t, repo.NewFile().WriteFile(settings.RepositoryConfig, 0o644))
+
+	collection := ChartCollection{Charts: []*Chart{
+		{
+			Repo: repo.Entry{
+				URL: "oci://localhost:5000/testchart",
+			},
+			Name:           "testchart",
+			Version:        ">=1.0.0",
+			PlainHTTP:      true,
+			RegistryClient: mockClient,
+		},
+	}}
+
+	mockClient.On("Tags", mock.Anything).Return([]string{}, resolveErr).Twice()
+
+	charts, err := collection.SetupHelm(settings, ContinueOnChartErrors(true))
+	assert.NoError(t, err)
+	assert.Len(t, charts.Charts, 0)
+
+	mockClient.AssertExpectations(t)
 }
 
 func TestLatestVersion(t *testing.T) {

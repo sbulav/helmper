@@ -102,6 +102,7 @@ func program(ctx context.Context, _ []string, viper *viper.Viper, settings *cli.
 			helm.Verbose(verbose),
 			helm.Update(update),
 			helm.LatestVersionOnly(parserConfig.LatestVersionOnly),
+			helm.ContinueOnChartErrors(parserConfig.ContinueOnChartErrors),
 		}
 	)
 

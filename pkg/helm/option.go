@@ -1,10 +1,11 @@
 package helm
 
 type Options struct {
-	Verbose           bool
-	Update            bool
-	K8SVersion        string
-	LatestVersionOnly bool
+	Verbose               bool
+	Update                bool
+	K8SVersion            string
+	LatestVersionOnly     bool
+	ContinueOnChartErrors bool
 }
 
 type Option func(*Options)
@@ -30,5 +31,11 @@ func K8SVersion(v string) Option {
 func LatestVersionOnly(b bool) Option {
 	return func(args *Options) {
 		args.LatestVersionOnly = b
+	}
+}
+
+func ContinueOnChartErrors(b bool) Option {
+	return func(args *Options) {
+		args.ContinueOnChartErrors = b
 	}
 }
