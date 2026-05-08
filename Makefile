@@ -7,11 +7,21 @@ GO_ENV ?= GOCACHE=$(CURDIR)/.gocache
 help:
 	@echo "Available targets:"
 	@echo "  make build             - build helmper with version (dev, sha) and current date -> $(BINARY)"
+	@echo "  make build <version>   - build helmper with explicit version tag"
+	@echo "  make build VERSION=<v> - build helmper with explicit version tag"
 	@echo "  make test              - run go tests"
 	@echo "  make clean             - remove build artifacts"
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
 BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LD_FLAGS := -ldflags="-X github.com/ChristofferNissen/helmper/internal.version=dev -X github.com/ChristofferNissen/helmper/internal.commit=$(GIT_COMMIT) -X github.com/ChristofferNissen/helmper/internal.date=$(BUILD_DATE)"
+VERSION_ARG := $(word 2,$(MAKECMDGOALS))
+ifneq ($(filter build,$(MAKECMDGOALS)),)
+ifneq ($(VERSION_ARG),)
+VERSION ?= $(VERSION_ARG)
+$(eval $(VERSION_ARG):; @:)
+endif
+endif
+VERSION ?= dev
+LD_FLAGS := -ldflags="-X github.com/ChristofferNissen/helmper/internal.version=$(VERSION) -X github.com/ChristofferNissen/helmper/internal.commit=$(GIT_COMMIT) -X github.com/ChristofferNissen/helmper/internal.date=$(BUILD_DATE)"
 $(BINARY):
 	# @mkdir -p $(dir $@)
 	cd cmd/helmper && $(GO_ENV) go build $(LD_FLAGS) -o $(CURDIR)/cmd/helmper/helmper .
